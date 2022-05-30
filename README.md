@@ -11,18 +11,18 @@
 
 ### Results
 
-|     Detector      | Backbone |      Neck      | LR Schedule | Box mAP | Mask mAP | Config |
-|:-----------------:|:--------:|:--------------:|:-----------:|--------:|---------:|-------:|
-| Sparse Mask R-CNN |  Swin-T  |      FPN       |     1x      |       - |        - |  exp01 |
-| Sparse Mask R-CNN |  Swin-T  |      FPN       |     3x      |       - |        - |  exp02 |
-| Sparse Mask R-CNN |  Swin-T  |      FPN       |     3x      |       - |        - |  exp03 |
-| Sparse Mask R-CNN |  Swin-T  |      FPN       |     3x      |       - |        - |  exp04 |
-| Sparse Mask R-CNN |  Swin-T  |     PAFPN      |     3x      |       - |        - |  exp05 |
-| Sparse Mask R-CNN |  Swin-T  | PAFPN + DyHead |     3x      |       - |        - |  exp06 |
+|   Detector   | Backbone |      Neck      | LR Schedule | Box mAP | Mask mAP | Config |
+|:------------:|:--------:|:--------------:|:-----------:|--------:|---------:|-------:|
+| Sparse R-CNN |  Swin-T  |      FPN       |     1x      |       - |        - |  exp01 |
+| Sparse R-CNN |  Swin-T  |      FPN       |     3x      |       - |        - |  exp02 |
+| Sparse R-CNN |  Swin-T  |      FPN       |     3x      |       - |        - |  exp03 |
+| Sparse R-CNN |  Swin-T  |      FPN       |     3x      |       - |        - |  exp04 |
+| Sparse R-CNN |  Swin-T  |     PAFPN      |     3x      |       - |        - |  exp05 |
+| Sparse R-CNN |  Swin-T  | PAFPN + DyHead |     3x      |       - |        - |  exp06 |
 
 ### TODO
 
-* [x] [exp01](./nets/exp01.py), default [Sparse Mask R-CNN](https://arxiv.org/abs/2105.01928) detector
+* [x] [exp01](./nets/exp01.py), default [Sparse R-CNN](https://arxiv.org/abs/2105.01928) detector
 * [x] [exp02](./nets/exp02.py), added [MOSAIC](https://arxiv.org/abs/2004.10934)
   and [MixUp](https://arxiv.org/abs/1710.09412)
 * [x] [exp03](./nets/exp03.py), added [GN](https://arxiv.org/abs/1803.08494) and [WS](https://arxiv.org/abs/1903.10520)
