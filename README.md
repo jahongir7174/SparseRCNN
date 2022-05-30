@@ -13,7 +13,7 @@
 
 |     Detector      | Backbone |      Neck      | LR Schedule | Box mAP | Mask mAP | Config |
 |:-----------------:|:--------:|:--------------:|:-----------:|--------:|---------:|-------:|
-| Sparse Mask R-CNN |  Swin-T  |      FPN       |     1x      |    42.6 |     39.5 |  exp01 |
+| Sparse Mask R-CNN |  Swin-T  |      FPN       |     1x      |       - |        - |  exp01 |
 | Sparse Mask R-CNN |  Swin-T  |      FPN       |     3x      |       - |        - |  exp02 |
 | Sparse Mask R-CNN |  Swin-T  |      FPN       |     3x      |       - |        - |  exp03 |
 | Sparse Mask R-CNN |  Swin-T  |      FPN       |     3x      |       - |        - |  exp04 |
