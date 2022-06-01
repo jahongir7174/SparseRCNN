@@ -91,11 +91,11 @@ def resample_masks(masks, n=1000):
     return masks
 
 
-def box_candidates(box1, box2, wh_thr=2, ar_thr=20, area_thr=0.1, eps=1e-16):
+def box_candidates(box1, box2):
     w1, h1 = box1[2] - box1[0], box1[3] - box1[1]
     w2, h2 = box2[2] - box2[0], box2[3] - box2[1]
-    ar = numpy.maximum(w2 / (h2 + eps), h2 / (w2 + eps))
-    return (w2 > wh_thr) & (h2 > wh_thr) & (w2 * h2 / (w1 * h1 + eps) > area_thr) & (ar < ar_thr)
+    area = numpy.maximum(w2 / (h2 + 1e-16), h2 / (w2 + 1e-16))
+    return (w2 > 2) & (h2 > 2) & (w2 * h2 / (w1 * h1 + 1e-16) > 0.01) & (area < 20)
 
 
 def copy_paste(image, boxes, masks, p=0.):
@@ -135,45 +135,38 @@ def random_hsv(image, h=0.015, s=0.7, v=0.4):
     cv2.cvtColor(image_hsv, cv2.COLOR_HSV2BGR, dst=image)  # no return needed
 
 
-def random_perspective(image, boxes=(), masks=(),
-                       degrees=0, translate=.1, scale=.5,
-                       shear=0, perspective=0., border=(0, 0)):
-    h = image.shape[0] + border[0] * 2
-    w = image.shape[1] + border[1] * 2
+def random_perspective(image, boxes=(), masks=()):
+    h = image.shape[0] // 2
+    w = image.shape[1] // 2
 
     # Center
-    c_gain = numpy.eye(3)
-    c_gain[0, 2] = -image.shape[1] / 2  # x translation (pixels)
-    c_gain[1, 2] = -image.shape[0] / 2  # y translation (pixels)
+    center = numpy.eye(3)
+    center[0, 2] = -image.shape[1] / 2  # x translation (pixels)
+    center[1, 2] = -image.shape[0] / 2  # y translation (pixels)
 
     # Perspective
-    p_gain = numpy.eye(3)
-    p_gain[2, 0] = random.uniform(-perspective, perspective)  # x perspective (about y)
-    p_gain[2, 1] = random.uniform(-perspective, perspective)  # y perspective (about x)
+    perspective = numpy.eye(3)
 
     # Rotation and Scale
-    r_gain = numpy.eye(3)
-    a = random.uniform(-degrees, degrees)
-    s = random.uniform(1 - scale, 1 + scale)
-    r_gain[:2] = cv2.getRotationMatrix2D(angle=a, center=(0, 0), scale=s)
+    rotation = numpy.eye(3)
+    a = random.uniform(-0, 0)
+    s = random.uniform(1 - 0.5, 1 + 0.5)
+    rotation[:2] = cv2.getRotationMatrix2D(center=(0, 0), angle=a, scale=s)
 
     # Shear
-    s_gain = numpy.eye(3)
-    s_gain[0, 1] = math.tan(random.uniform(-shear, shear) * math.pi / 180)  # x shear (deg)
-    s_gain[1, 0] = math.tan(random.uniform(-shear, shear) * math.pi / 180)  # y shear (deg)
+    shear = numpy.eye(3)
+    shear[0, 1] = math.tan(random.uniform(-0, 0) * math.pi / 180)  # x shear (deg)
+    shear[1, 0] = math.tan(random.uniform(-0, 0) * math.pi / 180)  # y shear (deg)
 
     # Translation
-    t_gain = numpy.eye(3)
-    t_gain[0, 2] = random.uniform(0.5 - translate, 0.5 + translate) * w  # x translation (pixels)
-    t_gain[1, 2] = random.uniform(0.5 - translate, 0.5 + translate) * h  # y translation (pixels)
+    translation = numpy.eye(3)
+    translation[0, 2] = random.uniform(0.5 - 0.1, 0.5 + 0.1) * w  # x translation (pixels)
+    translation[1, 2] = random.uniform(0.5 - 0.1, 0.5 + 0.1) * h  # y translation (pixels)
 
-    # Combined rotation matrix
-    matrix = t_gain @ s_gain @ r_gain @ p_gain @ c_gain  # order of operations (right to left) is IMPORTANT
-    if (border[0] != 0) or (border[1] != 0) or (matrix != numpy.eye(3)).any():
-        if perspective:
-            image = cv2.warpPerspective(image, matrix, dsize=(w, h), borderValue=(0, 0, 0))
-        else:  # affine
-            image = cv2.warpAffine(image, matrix[:2], dsize=(w, h), borderValue=(0, 0, 0))
+    # Combined rotation matrix, order of operations (right to left) is IMPORTANT
+    matrix = translation @ shear @ rotation @ perspective @ center
+    if (matrix != numpy.eye(3)).any():
+        image = cv2.warpAffine(image, matrix[:2], dsize=(w, h), borderValue=(0, 0, 0))  # affine
 
     n = len(boxes)
     if n:
@@ -183,7 +176,7 @@ def random_perspective(image, boxes=(), masks=(),
             xy = numpy.ones((len(mask), 3))
             xy[:, :2] = mask
             xy = xy @ matrix.T
-            xy = xy[:, :2] / xy[:, 2:3] if perspective else xy[:, :2]
+            xy = xy[:, :2]
 
             # clip
             new_boxes[i], x, y = mask2box(xy, w, h)
@@ -203,12 +196,15 @@ def random_perspective(image, boxes=(), masks=(),
 def mosaic(self, index):
     boxes4, masks4 = [], []
     size = numpy.random.choice(self.image_sizes)
-    border = [-size // 2, -size // 2]
+    xc = int(random.uniform(size // 2, 2 * size - size // 2))
+    yc = int(random.uniform(size // 2, 2 * size - size // 2))
+
     indexes4 = [index] + random.choices(range(self.num_samples), k=3)
-    yc, xc = [int(random.uniform(-x, 2 * size + x)) for x in border]
     numpy.random.shuffle(indexes4)
+
     results4 = [deepcopy(self.dataset[index]) for index in indexes4]
     filename = results4[0]['filename']
+
     shapes = [x['img_shape'][:2] for x in results4]
     image4 = numpy.full((2 * size, 2 * size, 3), 0, numpy.uint8)
 
@@ -260,7 +256,7 @@ def mosaic(self, index):
         numpy.clip(mask4[:, 0:1], 0, 2 * size, out=mask4[:, 0:1])
         numpy.clip(mask4[:, 1:2], 0, 2 * size, out=mask4[:, 1:2])
     image4, boxes4, masks4 = copy_paste(image4, boxes4, masks4, p=0.0)
-    image4, boxes4, masks4 = random_perspective(image4, boxes4, masks4, border=border)
+    image4, boxes4, masks4 = random_perspective(image4, boxes4, masks4)
 
     random_hsv(image4)
 

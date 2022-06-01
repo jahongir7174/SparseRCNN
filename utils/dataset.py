@@ -24,7 +24,7 @@ class MOSAICDataset:
 
     def __getitem__(self, index):
         while True:
-            if random.random() > 0.1:
+            if random.random() > 0.0:
                 data = util.mosaic(self, index)
             else:
                 data = util.mix_up(self, index, random.choice(self.indices))

@@ -6,7 +6,6 @@ import warnings
 
 import mmcv
 import torch
-from mmcv import Config
 from mmcv.runner import init_dist
 from mmdet.apis import set_random_seed, train_detector
 from mmdet.utils import collect_env, get_device, get_root_logger, setup_multi_processes
@@ -18,7 +17,7 @@ warnings.filterwarnings("ignore")
 
 
 def train(args):
-    cfg = Config.fromfile(args.config)
+    cfg = mmcv.Config.fromfile(args.config)
     # set multiprocess settings
     setup_multi_processes(cfg)
 
@@ -80,7 +79,7 @@ def test(args):
     from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
     from mmcv.runner import get_dist_info, load_checkpoint, wrap_fp16_model
 
-    cfg = Config.fromfile(args.config)
+    cfg = mmcv.Config.fromfile(args.config)
     # set multiprocess settings
     setup_multi_processes(cfg)
     # in case the test dataset is concatenated
@@ -129,7 +128,7 @@ def fps(args):
     from mmcv.parallel import MMDistributedDataParallel
     from mmdet.datasets import build_dataloader, replace_ImageToTensor
 
-    cfg = Config.fromfile(args.config)
+    cfg = mmcv.Config.fromfile(args.config)
     # set multiprocess settings
     setup_multi_processes(cfg)
     if isinstance(cfg.data.test, dict):
