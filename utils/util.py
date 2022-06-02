@@ -59,7 +59,7 @@ def mask2box(mask, w, h):
         return numpy.zeros((1, 4)), x, y
 
 
-def box_ioa(box1, box2, eps=1E-7):
+def box_ioa(box1, box2):
     box2 = box2.transpose()
 
     # Get the coordinates of bounding boxes
@@ -69,13 +69,9 @@ def box_ioa(box1, box2, eps=1E-7):
     # Intersection area
     area1 = (numpy.minimum(b1_x2, b2_x2) - numpy.maximum(b1_x1, b2_x1)).clip(0)
     area2 = (numpy.minimum(b1_y2, b2_y2) - numpy.maximum(b1_y1, b2_y1)).clip(0)
-    inter_area = area1 * area2
 
-    # box2 area
-    box2_area = (b2_x2 - b2_x1) * (b2_y2 - b2_y1) + eps
-
-    # Intersection over box2 area
-    return inter_area / box2_area
+    # Intersection over area
+    return area1 * area2 / ((b2_x2 - b2_x1) * (b2_y2 - b2_y1) + 1E-7)
 
 
 def masks2boxes(masks):
