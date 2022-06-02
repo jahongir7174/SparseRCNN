@@ -47,9 +47,13 @@ def whn2xy(x, w, h, pad_w, pad_h):
 
 def mask2box(mask, w, h):
     x, y = mask.T
-    inside = (x >= 0) & (y >= 0) & (x <= w) & (y <= h)
-    x, y, = x[inside], y[inside]
-    if any(x):
+
+    inside = (x >= 0) & (y >= 0) & (x < w) & (y < h)
+
+    x = x[inside]
+    y = y[inside]
+
+    if any(x) and any(y):
         return numpy.array([x.min(), y.min(), x.max(), y.max()]), x, y
     else:
         return numpy.zeros((1, 4)), x, y
@@ -74,10 +78,10 @@ def box_ioa(box1, box2, eps=1E-7):
     return inter_area / box2_area
 
 
-def masks2boxes(segments):
+def masks2boxes(masks):
     boxes = []
-    for s in segments:
-        x, y = s.T
+    for mask in masks:
+        x, y = mask.T
         boxes.append([x.min(), y.min(), x.max(), y.max()])
     return xy2wh(numpy.array(boxes))
 
@@ -99,7 +103,7 @@ def box_candidates(box1, box2):
 
 
 def copy_paste(image, boxes, masks, p=0.):
-    # Implement Copy-Paste augmentation https://arxiv.org/abs/2012.07177
+    # Copy-Paste augmentation https://arxiv.org/abs/2012.07177
     n = len(masks)
     if p and n:
         h, w, c = image.shape
@@ -121,9 +125,9 @@ def copy_paste(image, boxes, masks, p=0.):
     return image, boxes, masks
 
 
-def random_hsv(image, h=0.015, s=0.7, v=0.4):
+def random_hsv(image):
     # HSV color-space augmentation
-    r = numpy.random.uniform(-1, 1, 3) * [h, s, v] + 1
+    r = numpy.random.uniform(-1, 1, 3) * [0.015, 0.7, 0.4] + 1
     hue, sat, val = cv2.split(cv2.cvtColor(image, cv2.COLOR_BGR2HSV))
 
     x = numpy.arange(0, 256, dtype=r.dtype)
@@ -135,9 +139,9 @@ def random_hsv(image, h=0.015, s=0.7, v=0.4):
     cv2.cvtColor(image_hsv, cv2.COLOR_HSV2BGR, dst=image)  # no return needed
 
 
-def random_perspective(image, boxes=(), masks=()):
-    h = image.shape[0] // 2
+def random_perspective(image, boxes, masks):
     w = image.shape[1] // 2
+    h = image.shape[0] // 2
 
     # Center
     center = numpy.eye(3)
@@ -166,7 +170,7 @@ def random_perspective(image, boxes=(), masks=()):
     # Combined rotation matrix, order of operations (right to left) is IMPORTANT
     matrix = translation @ shear @ rotation @ perspective @ center
     if (matrix != numpy.eye(3)).any():
-        image = cv2.warpAffine(image, matrix[:2], dsize=(w, h), borderValue=(0, 0, 0))  # affine
+        image = cv2.warpAffine(image, matrix[:2], dsize=(w, h))  # affine
 
     n = len(boxes)
     if n:
@@ -183,7 +187,7 @@ def random_perspective(image, boxes=(), masks=()):
             new_masks.append([x, y])
 
         # filter candidates
-        candidates = box_candidates(boxes[:, 1:5].T * s, new_boxes.T, area_thr=0.01)
+        candidates = box_candidates(boxes[:, 1:5].T * s, new_boxes.T)
         boxes = boxes[candidates]
         boxes[:, 1:5] = new_boxes[candidates]
         masks = []
@@ -194,8 +198,8 @@ def random_perspective(image, boxes=(), masks=()):
 
 
 def mosaic(self, index):
-    boxes4, masks4 = [], []
     size = numpy.random.choice(self.image_sizes)
+
     xc = int(random.uniform(size // 2, 2 * size - size // 2))
     yc = int(random.uniform(size // 2, 2 * size - size // 2))
 
@@ -205,6 +209,8 @@ def mosaic(self, index):
     results4 = [deepcopy(self.dataset[index]) for index in indexes4]
     filename = results4[0]['filename']
 
+    boxes4 = []
+    masks4 = []
     shapes = [x['img_shape'][:2] for x in results4]
     image4 = numpy.full((2 * size, 2 * size, 3), 0, numpy.uint8)
 
@@ -230,35 +236,40 @@ def mosaic(self, index):
 
         masks = []
         label = numpy.array(results['ann_info']['labels'])
+
         for mask in results['ann_info']['masks']:
             mask = [j for i in mask for j in i]
             mask = numpy.array(mask).reshape(-1, 2)
             masks.append(mask / numpy.array([shape[1], shape[0]]))
-        masks = [x for x in masks]
+
         try:
             boxes = (label.reshape(-1, 1), masks2boxes(masks))
             boxes = numpy.concatenate(boxes, axis=1)
         except IndexError:
             return None
+
         if boxes.size:
             boxes[:, 1:] = whn2xy(boxes[:, 1:], w, h, pad_w, pad_h)
             masks = [xyn2xy(x, w, h, pad_w, pad_h) for x in masks]
+
         boxes4.append(boxes)
         masks4.extend(masks)
+
     # concatenate & clip
     boxes4 = numpy.concatenate(boxes4, 0)
+
     for i, box4 in enumerate(boxes4[:, 1:]):
         if i % 2 == 0:
             numpy.clip(box4, 0, 2 * size, out=box4)
         else:
             numpy.clip(box4, 0, 2 * size, out=box4)
-    for mask4 in masks4:
-        numpy.clip(mask4[:, 0:1], 0, 2 * size, out=mask4[:, 0:1])
-        numpy.clip(mask4[:, 1:2], 0, 2 * size, out=mask4[:, 1:2])
-    image4, boxes4, masks4 = copy_paste(image4, boxes4, masks4, p=0.0)
-    image4, boxes4, masks4 = random_perspective(image4, boxes4, masks4)
 
-    random_hsv(image4)
+    for mask4 in masks4:
+        numpy.clip(a=mask4[:, 0:1], a_min=0, a_max=2 * size, out=mask4[:, 0:1])
+        numpy.clip(a=mask4[:, 1:2], a_min=0, a_max=2 * size, out=mask4[:, 1:2])
+
+    image4, boxes4, masks4 = copy_paste(image4, boxes4, masks4, p=0.1)
+    image4, boxes4, masks4 = random_perspective(image4, boxes4, masks4)
 
     label = []
     boxes = []
@@ -271,6 +282,11 @@ def mosaic(self, index):
         masks.append([mask])
         label.append(box4[0])
         boxes.append(box4[1:5])
+
+    # del copied results
+    del results4
+    random_hsv(image4)
+
     if len(boxes) and len(label) and len(masks):
         label = numpy.array(label, dtype=numpy.int64)
         boxes = numpy.array(boxes, dtype=numpy.float32)
@@ -280,9 +296,10 @@ def mosaic(self, index):
 
 
 def mix_up(self, index1, index2):
-    r = numpy.random.beta(32.0, 32.0)
     data1 = mosaic(self, index1)
     data2 = mosaic(self, index2)
+    alpha = numpy.random.beta(32.0, 32.0)
+
     if data1 is not None and data2 is not None:
         image1 = data1['image']
         label1 = data1['label']
@@ -293,22 +310,26 @@ def mix_up(self, index1, index2):
         label2 = data2['label']
         boxes2 = data2['boxes']
         masks2 = data2['masks']
-        image = (image1 * r + image2 * (1 - r)).astype(numpy.uint8)
+
+        image = (image1 * alpha + image2 * (1 - alpha)).astype(numpy.uint8)
         boxes = numpy.concatenate((boxes1, boxes2), 0)
         label = numpy.concatenate((label1, label2), 0)
         masks1.extend(masks2)
+
         return dict(filename=data1['filename'], image=image, label=label, boxes=boxes, masks=masks1)
     if data1 is None and data2 is not None:
         image = data2['image']
         label = data2['label']
         boxes = data2['boxes']
         masks = data2['masks']
+
         return dict(filename=data2['filename'], image=image, label=label, boxes=boxes, masks=masks)
     if data1 is not None and data2 is None:
         image = data1['image']
         label = data1['label']
         boxes = data1['boxes']
         masks = data1['masks']
+
         return dict(filename=data1['filename'], image=image, label=label, boxes=boxes, masks=masks)
     return None
 
@@ -321,14 +342,13 @@ def process(self, data):
 
     results = dict()
     results['filename'] = data['filename']
-
     results['ann_info'] = {'labels': label, 'bboxes': boxes, 'masks': masks}
     results['img_info'] = {'height': image.shape[0], 'width': image.shape[1]}
-    results['img_fields'] = ['img']
     results['bbox_fields'] = []
     results['mask_fields'] = []
     results['ori_filename'] = basename(data['filename'])
     results['img'] = image
+    results['img_fields'] = ['img']
     results['img_shape'] = image.shape
     results['ori_shape'] = image.shape
     return self.pipeline(results)
