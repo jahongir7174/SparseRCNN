@@ -193,8 +193,9 @@ def random_perspective(image, boxes, masks):
     return image, boxes, masks
 
 
-def mosaic(self, index):
-    size = numpy.random.choice(self.image_sizes)
+def mosaic(self, index, size=None):
+    if size is None:
+        size = numpy.random.choice(self.image_sizes)
 
     xc = int(random.uniform(size // 2, 2 * size - size // 2))
     yc = int(random.uniform(size // 2, 2 * size - size // 2))
@@ -292,8 +293,10 @@ def mosaic(self, index):
 
 
 def mix_up(self, index1, index2):
-    data1 = mosaic(self, index1)
-    data2 = mosaic(self, index2)
+    size = numpy.random.choice(self.image_sizes)
+
+    data1 = mosaic(self, index1, size)
+    data2 = mosaic(self, index2, size)
     alpha = numpy.random.beta(32.0, 32.0)
 
     if data1 is not None and data2 is not None:
