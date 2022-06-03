@@ -98,7 +98,7 @@ def box_candidates(box1, box2):
     return (w2 > 2) & (h2 > 2) & (w2 * h2 / (w1 * h1 + 1e-16) > 0.01) & (area < 20)
 
 
-def copy_paste(image, boxes, masks, p=0.):
+def copy_paste(image, boxes, masks, p):
     # Copy-Paste augmentation https://arxiv.org/abs/2012.07177
     n = len(masks)
     if p and n:
@@ -265,7 +265,7 @@ def mosaic(self, index, size=None):
         numpy.clip(a=mask4[:, 0:1], a_min=0, a_max=2 * size, out=mask4[:, 0:1])
         numpy.clip(a=mask4[:, 1:2], a_min=0, a_max=2 * size, out=mask4[:, 1:2])
 
-    image4, boxes4, masks4 = copy_paste(image4, boxes4, masks4, p=0.1)
+    image4, boxes4, masks4 = copy_paste(image4, boxes4, masks4, p=0.25)
     image4, boxes4, masks4 = random_perspective(image4, boxes4, masks4)
 
     label = []
@@ -284,7 +284,7 @@ def mosaic(self, index, size=None):
     del results4
     random_hsv(image4)
 
-    if len(boxes) and len(label) and len(masks):
+    if len(boxes) == len(label) == len(masks):
         label = numpy.array(label, dtype=numpy.int64)
         boxes = numpy.array(boxes, dtype=numpy.float32)
         return dict(filename=filename, image=image4, label=label, boxes=boxes, masks=masks)
