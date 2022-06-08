@@ -1,13 +1,9 @@
 # model settings
-base = 'https://github.com/SwinTransformer/storage/releases'
-pretrained = f'{base}/download/v1.0.0/swin_tiny_patch4_window7_224.pth'
 model = dict(type='SparseMaskRCNN',
-             backbone=dict(type='SwinTransformer',
-                           embed_dims=96,
-                           depths=[2, 2, 6, 2],
-                           convert_weights=True,
-                           num_heads=[3, 6, 12, 24],
-                           init_cfg=dict(type='Pretrained', checkpoint=pretrained)),
+             backbone=dict(type='ResNet',
+                           depth=50,
+                           frozen_stages=1,
+                           init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet50')),
              neck=dict(type='PAFPN',
                        in_channels=[96, 192, 384, 768],
                        out_channels=256, num_outs=4,
@@ -46,7 +42,7 @@ model = dict(type='SparseMaskRCNN',
 # dataset settings
 dataset_type = 'CocoDataset'
 data_root = '../Dataset/COCO/'
-samples_per_gpu = 4
+samples_per_gpu = 8
 workers_per_gpu = 4
 img_norm_cfg = dict(mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
 train_pipeline = [dict(type='LoadImageFromFile', to_float32=False, color_type='color'),
@@ -81,11 +77,7 @@ data = dict(samples_per_gpu=samples_per_gpu,
                       ann_file=data_root + 'annotation/val2017.json',
                       img_prefix=data_root + 'images/val2017/',
                       pipeline=test_pipeline))
-optimizer = dict(type='AdamW',
-                 lr=0.0001, weight_decay=0.05,
-                 paramwise_cfg=dict(custom_keys={'norm': dict(decay_mult=0.),
-                                                 'absolute_pos_embed': dict(decay_mult=0.),
-                                                 'relative_position_bias_table': dict(decay_mult=0.)}))
+optimizer = dict(type='AdamW', lr=0.000025, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=1, norm_type=2))
 lr_config = dict(step=[9, 11],
                  policy='step',
