@@ -80,7 +80,7 @@ class SparseMaskRCNN(TwoStageDetector):
         x = self.extract_feats(images)
         proposal_boxes, proposal_features, images_wh_wh = self.rpn_head.aug_test_rpn(x, img_metas)
         results = self.roi_head.aug_test(x, proposal_boxes, proposal_features,
-                                         img_metas, aug_imgs_whwh=images_wh_wh, rescale=rescale)
+                                         img_metas, aug_images_wh_wh=images_wh_wh, rescale=rescale)
         return results
 
     def forward_dummy(self, img):
@@ -277,16 +277,11 @@ class SparseMaskRoIHead(CascadeRoIHead):
         mask_results.update(loss_mask)
         return mask_results
 
-    def forward_train(self,
-                      x,
+    def forward_train(self, x,
                       proposal_boxes,
                       proposal_features,
-                      img_metas,
-                      gt_bboxes,
-                      gt_labels,
-                      gt_bboxes_ignore=None,
-                      images_wh_wh=None,
-                      gt_masks=None):
+                      img_metas, gt_bboxes, gt_labels,
+                      gt_bboxes_ignore=None, images_wh_wh=None, gt_masks=None):
         num_images = len(img_metas)
         num_proposals = proposal_boxes.size(1)
         images_wh_wh = images_wh_wh.repeat(1, num_proposals, 1)
@@ -419,18 +414,20 @@ class SparseMaskRoIHead(CascadeRoIHead):
                  aug_proposal_boxes,
                  aug_proposal_features,
                  aug_img_metas,
-                 aug_imgs_whwh,
+                 aug_images_wh_wh,
                  rescale=False):
 
         samples_per_gpu = len(aug_img_metas[0])
         aug_det_bboxes = [[] for _ in range(samples_per_gpu)]
         aug_det_labels = [[] for _ in range(samples_per_gpu)]
         aug_mask_preds = [[] for _ in range(samples_per_gpu)]
-        for x, proposal_boxes, proposal_features, img_metas, imgs_whwh in \
-                zip(aug_x, aug_proposal_boxes, aug_proposal_features, aug_img_metas, aug_imgs_whwh):
+        for x, proposal_boxes, proposal_features, img_metas, imgs_whwh in zip(aug_x,
+                                                                              aug_proposal_boxes,
+                                                                              aug_proposal_features,
+                                                                              aug_img_metas, aug_images_wh_wh):
 
-            num_imgs = len(img_metas)
-            proposal_list = [proposal_boxes[i] for i in range(num_imgs)]
+            num_images = len(img_metas)
+            proposal_list = [proposal_boxes[i] for i in range(num_images)]
             ori_shapes = tuple(meta['ori_shape'] for meta in img_metas)
             scale_factors = tuple(meta['scale_factor'] for meta in img_metas)
 
@@ -446,7 +443,7 @@ class SparseMaskRoIHead(CascadeRoIHead):
             if self.with_mask:
                 rois = transforms.bbox2roi(proposal_list)
                 mask_results = self._mask_forward(stage, x, rois, bbox_results['attn_feats'])
-                mask_results['mask_pred'] = mask_results['mask_pred'].reshape(num_imgs, -1,
+                mask_results['mask_pred'] = mask_results['mask_pred'].reshape(num_images, -1,
                                                                               *mask_results['mask_pred'].size()[1:])
 
             num_classes = self.bbox_head[-1].num_classes
@@ -458,7 +455,7 @@ class SparseMaskRoIHead(CascadeRoIHead):
             else:
                 cls_score = cls_score.softmax(-1)[..., :-1]
 
-            for img_id in range(num_imgs):
+            for img_id in range(num_images):
                 cls_score_per_img = cls_score[img_id]
                 scores_per_img, topk_indices = cls_score_per_img.flatten(0, 1).topk(self.test_cfg.max_per_img,
                                                                                     sorted=False)
@@ -479,7 +476,7 @@ class SparseMaskRoIHead(CascadeRoIHead):
                 _bboxes = [det_bboxes[i][:, :4] * scale_factors[i] if rescale else det_bboxes[i][:, :4]
                            for i in range(len(det_bboxes))]
                 mask_pred = mask_results['mask_pred']
-                for img_id in range(num_imgs):
+                for img_id in range(num_images):
                     mask_pred_per_img = mask_pred[img_id].flatten(0, 1)[topk_indices]
                     mask_pred_per_img = mask_pred_per_img[:, None, ...].repeat(1, num_classes, 1, 1)
                     segm_result = self.mask_head[-1].get_seg_masks(mask_pred_per_img,
