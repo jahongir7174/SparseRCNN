@@ -18,7 +18,9 @@ model = dict(type='SparseMaskRCNN',
                            bbox_head=[dict(type='DIIHead',
                                            num_classes=80,
                                            loss_bbox=dict(type='L1Loss', loss_weight=5.0),
-                                           loss_cls=dict(type='PolyLoss'),  # nets/nn.py
+                                           loss_cls=dict(type='FocalLoss',
+                                                         use_sigmoid=True,
+                                                         gamma=2.0, alpha=0.25, loss_weight=2.0),
                                            bbox_coder=dict(type='DeltaXYWHBBoxCoder',
                                                            clip_border=False,
                                                            target_means=[0., 0., 0., 0.],
@@ -42,14 +44,13 @@ model = dict(type='SparseMaskRCNN',
              test_cfg=dict(rpn=None,
                            rcnn=dict(max_per_img=100, mask_thr_binary=0.5)))
 # dataset settings
+image_size = (1024, 1024)
 dataset_type = 'CocoDataset'
 data_root = '../Dataset/COCO/'
 samples_per_gpu = 4
 workers_per_gpu = 4
 img_norm_cfg = dict(mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
-train_pipeline = [dict(type='LoadImageFromFile', to_float32=False, color_type='color'),
-                  dict(type='LoadAnnotations', with_mask=True, poly2mask=False),
-                  dict(type='Resize', img_scale=(1333, 800), keep_ratio=True),
+train_pipeline = [dict(type='LoadAnnotations', with_mask=True, poly2mask=False),
                   dict(type='RandomFlip', flip_ratio=0.5),
                   dict(type='Normalize', **img_norm_cfg),
                   dict(type='Pad', size_divisor=32),
@@ -57,8 +58,8 @@ train_pipeline = [dict(type='LoadImageFromFile', to_float32=False, color_type='c
                   dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels', 'gt_masks'])]
 test_pipeline = [dict(type='LoadImageFromFile'),
                  dict(type='MultiScaleFlipAug',
-                      flip=False,
                       img_scale=(1333, 800),
+                      flip=False,
                       transforms=[dict(type='Resize', keep_ratio=True),
                                   dict(type='RandomFlip'),
                                   dict(type='Normalize', **img_norm_cfg),
@@ -67,9 +68,14 @@ test_pipeline = [dict(type='LoadImageFromFile'),
                                   dict(type='Collect', keys=['img'])])]
 data = dict(samples_per_gpu=samples_per_gpu,
             workers_per_gpu=workers_per_gpu,
-            train=dict(type=dataset_type,
-                       ann_file=data_root + 'annotation/train2017.json',
-                       img_prefix=data_root + 'images/train2017/',
+            train=dict(type='MOSAICDataset',
+                       dataset=dict(type='RepeatDataset',
+                                    times=3,
+                                    dataset=dict(type=dataset_type,
+                                                 ann_file=data_root + 'annotation/train2017.json',
+                                                 img_prefix=data_root + 'images/train2017/',
+                                                 pipeline=[dict(type='LoadImageFromFile')])),
+                       image_sizess=(960, 1024),
                        pipeline=train_pipeline),
             val=dict(type=dataset_type,
                      ann_file=data_root + 'annotation/val2017.json',

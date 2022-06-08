@@ -9,13 +9,13 @@ from utils import util
 
 @DATASETS.register_module()
 class MOSAICDataset:
-    def __init__(self, dataset, image_size, pipeline):
+    def __init__(self, dataset, image_sizes, pipeline):
         self.dataset = dataset
         self.CLASSES = dataset.CLASSES
         self.pipeline = Compose(pipeline)
         if hasattr(self.dataset, 'flag'):
             self.flag = numpy.zeros(len(dataset), dtype=numpy.uint8)
-        self.image_sizes = image_size
+        self.image_sizes = image_sizes
         self.num_samples = len(dataset)
         self.indices = range(len(dataset))
 
@@ -24,7 +24,7 @@ class MOSAICDataset:
 
     def __getitem__(self, index):
         while True:
-            if random.random() > 0.25:
+            if random.random() > 0.00:
                 data = util.mosaic(self, index)
             else:
                 data = util.mix_up(self, index, random.choice(self.indices))

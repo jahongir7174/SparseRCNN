@@ -11,9 +11,9 @@ def resample():
     return random.choice((cv2.INTER_LINEAR, cv2.INTER_CUBIC))
 
 
-def resize(image, image_size):
+def resize(image, size):
     h, w = image.shape[:2]
-    ratio = image_size / max(h, w)
+    ratio = size / max(h, w)
     if ratio != 1:
         shape = (int(w * ratio), int(h * ratio))
         image = cv2.resize(image, shape, interpolation=resample())
@@ -71,7 +71,7 @@ def box_ioa(box1, box2):
     area2 = (numpy.minimum(b1_y2, b2_y2) - numpy.maximum(b1_y1, b2_y1)).clip(0)
 
     # Intersection over area
-    return area1 * area2 / ((b2_x2 - b2_x1) * (b2_y2 - b2_y1) + 1E-7)
+    return (area1 * area2) / ((b2_x2 - b2_x1) * (b2_y2 - b2_y1) + 1e-7)
 
 
 def masks2boxes(masks):
@@ -98,7 +98,7 @@ def box_candidates(box1, box2):
     return (w2 > 2) & (h2 > 2) & (w2 * h2 / (w1 * h1 + 1e-16) > 0.01) & (area < 20)
 
 
-def copy_paste(image, boxes, masks, p):
+def copy_paste(image, boxes, masks, p=0.0):
     # Copy-Paste augmentation https://arxiv.org/abs/2012.07177
     n = len(masks)
     if p and n:
@@ -135,10 +135,7 @@ def random_hsv(image):
     cv2.cvtColor(image_hsv, cv2.COLOR_HSV2BGR, dst=image)  # no return needed
 
 
-def random_perspective(image, boxes, masks):
-    w = image.shape[1] // 2
-    h = image.shape[0] // 2
-
+def random_perspective(image, boxes, masks, size):
     # Center
     center = numpy.eye(3)
     center[0, 2] = -image.shape[1] / 2  # x translation (pixels)
@@ -160,13 +157,13 @@ def random_perspective(image, boxes, masks):
 
     # Translation
     translation = numpy.eye(3)
-    translation[0, 2] = random.uniform(0.5 - 0.1, 0.5 + 0.1) * w  # x translation (pixels)
-    translation[1, 2] = random.uniform(0.5 - 0.1, 0.5 + 0.1) * h  # y translation (pixels)
+    translation[0, 2] = random.uniform(0.5 - 0.1, 0.5 + 0.1) * size  # x translation (pixels)
+    translation[1, 2] = random.uniform(0.5 - 0.1, 0.5 + 0.1) * size  # y translation (pixels)
 
     # Combined rotation matrix, order of operations (right to left) is IMPORTANT
     matrix = translation @ shear @ rotation @ perspective @ center
     if (matrix != numpy.eye(3)).any():
-        image = cv2.warpAffine(image, matrix[:2], dsize=(w, h))  # affine
+        image = cv2.warpAffine(image, matrix[:2], dsize=(size, size))  # affine
 
     n = len(boxes)
     if n:
@@ -179,7 +176,7 @@ def random_perspective(image, boxes, masks):
             xy = xy[:, :2]
 
             # clip
-            new_boxes[i], x, y = mask2box(xy, w, h)
+            new_boxes[i], x, y = mask2box(xy, size, size)
             new_masks.append([x, y])
 
         # filter candidates
@@ -239,13 +236,10 @@ def mosaic(self, index, size=None):
             mask = numpy.array(mask).reshape(-1, 2)
             masks.append(mask / numpy.array([shape[1], shape[0]]))
 
-        try:
-            boxes = (label.reshape(-1, 1), masks2boxes(masks))
-            boxes = numpy.concatenate(boxes, axis=1)
-        except IndexError:
-            return None
+        boxes = (label.reshape(-1, 1), masks2boxes(masks))
+        boxes = numpy.concatenate(boxes, axis=1)
 
-        if boxes.size:
+        if len(boxes):
             boxes[:, 1:] = whn2xy(boxes[:, 1:], w, h, pad_w, pad_h)
             masks = [xyn2xy(x, w, h, pad_w, pad_h) for x in masks]
 
@@ -255,36 +249,40 @@ def mosaic(self, index, size=None):
     # concatenate & clip
     boxes4 = numpy.concatenate(boxes4, 0)
 
-    for i, box4 in enumerate(boxes4[:, 1:]):
-        if i % 2 == 0:
-            numpy.clip(box4, 0, 2 * size, out=box4)
-        else:
-            numpy.clip(box4, 0, 2 * size, out=box4)
+    for box4 in boxes4[:, 1:]:
+        numpy.clip(a=box4, a_min=0, a_max=2 * size, out=box4)
 
     for mask4 in masks4:
-        numpy.clip(a=mask4[:, 0:1], a_min=0, a_max=2 * size, out=mask4[:, 0:1])
-        numpy.clip(a=mask4[:, 1:2], a_min=0, a_max=2 * size, out=mask4[:, 1:2])
+        numpy.clip(a=mask4, a_min=0, a_max=2 * size, out=mask4)
 
-    image4, boxes4, masks4 = copy_paste(image4, boxes4, masks4, p=0.25)
-    image4, boxes4, masks4 = random_perspective(image4, boxes4, masks4)
+    image4, boxes4, masks4 = copy_paste(image4, boxes4, masks4, p=0.00)
+    image4, boxes4, masks4 = random_perspective(image4, boxes4, masks4, size)
 
     label = []
     boxes = []
     masks = []
     for box4, mask4 in zip(boxes4, masks4):
+        if len(mask4[0]) != len(mask4[1]):
+            return None
+        if len(mask4[0]) % 2 != 0 or len(mask4[0]) < 6:
+            return None
+        if len(mask4[1]) % 2 != 0 or len(mask4[1]) < 6:
+            return None
         mask = []
         for x, y in zip(mask4[0], mask4[1]):
-            mask.append(x)
-            mask.append(y)
+            mask.append(max(0, min(int(x), size)))
+            mask.append(max(0, min(int(y), size)))
         masks.append([mask])
         label.append(box4[0])
         boxes.append(box4[1:5])
 
     # del copied results
     del results4
-    random_hsv(image4)
+    if not len(boxes):
+        return None
 
     if len(boxes) == len(label) == len(masks):
+        random_hsv(image4)
         label = numpy.array(label, dtype=numpy.int64)
         boxes = numpy.array(boxes, dtype=numpy.float32)
         return dict(filename=filename, image=image4, label=label, boxes=boxes, masks=masks)
@@ -339,15 +337,20 @@ def process(self, data):
     boxes = data['boxes']
     masks = data['masks']
 
+    shape = image.shape
+
     results = dict()
     results['filename'] = data['filename']
+    results['img_info'] = {'height': shape[0], 'width': shape[1]}
     results['ann_info'] = {'labels': label, 'bboxes': boxes, 'masks': masks}
-    results['img_info'] = {'height': image.shape[0], 'width': image.shape[1]}
     results['bbox_fields'] = []
     results['mask_fields'] = []
     results['ori_filename'] = basename(data['filename'])
     results['img'] = image
     results['img_fields'] = ['img']
-    results['img_shape'] = image.shape
-    results['ori_shape'] = image.shape
+    results['img_shape'] = shape
+    results['ori_shape'] = shape
+    results['pad_shape'] = shape
+
+    results['scale_factor'] = numpy.array([1, 1, 1, 1], dtype=numpy.float32)
     return self.pipeline(results)
